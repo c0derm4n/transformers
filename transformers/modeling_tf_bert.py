@@ -86,6 +86,7 @@ ACT2FN = {"gelu": tf.keras.layers.Activation(gelu),
 
 class TFBertEmbeddings(tf.keras.layers.Layer):
     """Construct the embeddings from word, position and token_type embeddings.
+        3 ids --> 3 embeddings --> dropout(norm(sum(3 embeddings)))
     """
     def __init__(self, config, **kwargs):
         super(TFBertEmbeddings, self).__init__(**kwargs)
@@ -150,9 +151,9 @@ class TFBertEmbeddings(tf.keras.layers.Layer):
         if token_type_ids is None:
             token_type_ids = tf.fill(tf.shape(input_ids), 0)
 
-        words_embeddings = tf.gather(self.word_embeddings, input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
+        words_embeddings = tf.gather(self.word_embeddings, input_ids)  # 类似与one-hot乘以词向量查找表
+        position_embeddings = self.position_embeddings(position_ids)  # 嵌入
+        token_type_embeddings = self.token_type_embeddings(token_type_ids)  # 嵌入
 
         embeddings = words_embeddings + position_embeddings + token_type_embeddings
         embeddings = self.LayerNorm(embeddings)
@@ -169,25 +170,27 @@ class TFBertEmbeddings(tf.keras.layers.Layer):
         batch_size = tf.shape(inputs)[0]
         length = tf.shape(inputs)[1]
 
-        x = tf.reshape(inputs, [-1, self.hidden_size])
-        logits = tf.matmul(x, self.word_embeddings, transpose_b=True)
+        x = tf.reshape(inputs, [-1, self.hidden_size])  # [batch_size*length, hidden_size]
+        logits = tf.matmul(x, self.word_embeddings, transpose_b=True)  # [batch_size*length, vocab_size]
 
         return tf.reshape(logits, [batch_size, length, self.vocab_size])
 
 
 class TFBertSelfAttention(tf.keras.layers.Layer):
+    """hidden_states映射为q k v ， 然后softmax(q*k/tf.math.sqrt(dk))得到权重，输出加权相乘得到的context_layer
+    """
     def __init__(self, config, **kwargs):
         super(TFBertSelfAttention, self).__init__(**kwargs)
         if config.hidden_size % config.num_attention_heads != 0:
             raise ValueError(
                 "The hidden size (%d) is not a multiple of the number of attention "
                 "heads (%d)" % (config.hidden_size, config.num_attention_heads))
-        self.output_attentions = config.output_attentions
+        self.output_attentions = config.output_attentions  # False
 
-        self.num_attention_heads = config.num_attention_heads
+        self.num_attention_heads = config.num_attention_heads  # 12
         assert config.hidden_size % config.num_attention_heads == 0
-        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
+        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)  # 64
+        self.all_head_size = self.num_attention_heads * self.attention_head_size  # 768
 
         self.query = tf.keras.layers.Dense(self.all_head_size,
                                            kernel_initializer=get_initializer(config.initializer_range),
@@ -206,14 +209,14 @@ class TFBertSelfAttention(tf.keras.layers.Layer):
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
     def call(self, inputs, training=False):
-        hidden_states, attention_mask, head_mask = inputs
+        hidden_states, attention_mask, head_mask = inputs  # all is [batch_size ,length, hidden_size]
 
         batch_size = tf.shape(hidden_states)[0]
-        mixed_query_layer = self.query(hidden_states)
+        mixed_query_layer = self.query(hidden_states)  # hidden_states接Dense, 3维到3维, [batch_size ,length, all_head_size]
         mixed_key_layer = self.key(hidden_states)
         mixed_value_layer = self.value(hidden_states)
 
-        query_layer = self.transpose_for_scores(mixed_query_layer, batch_size)
+        query_layer = self.transpose_for_scores(mixed_query_layer, batch_size) # [batch_size, num_attention_heads, length, attention_head_size]
         key_layer = self.transpose_for_scores(mixed_key_layer, batch_size)
         value_layer = self.transpose_for_scores(mixed_value_layer, batch_size)
 
@@ -237,17 +240,17 @@ class TFBertSelfAttention(tf.keras.layers.Layer):
         if head_mask is not None:
             attention_probs = attention_probs * head_mask
 
-        context_layer = tf.matmul(attention_probs, value_layer)
+        context_layer = tf.matmul(attention_probs, value_layer)   # 注意力权重乘以value
 
         context_layer = tf.transpose(context_layer, perm=[0, 2, 1, 3])
-        context_layer = tf.reshape(context_layer, 
-                                  (batch_size, -1, self.all_head_size))  # (batch_size, seq_len_q, all_head_size)
+        context_layer = tf.reshape(context_layer,
+                                   (batch_size, -1, self.all_head_size))  # (batch_size, seq_len_q, all_head_size)
 
         outputs = (context_layer, attention_probs) if self.output_attentions else (context_layer,)
-        return outputs
+        return outputs    # (context_layer,) or (context_layer, attention_probs)
 
 
-class TFBertSelfOutput(tf.keras.layers.Layer):
+class TFBertSelfOutput(tf.keras.layers.Layer):  # hidden_states+dense+dropout+LayerNorm
     def __init__(self, config, **kwargs):
         super(TFBertSelfOutput, self).__init__(**kwargs)
         self.dense = tf.keras.layers.Dense(config.hidden_size,
@@ -265,7 +268,7 @@ class TFBertSelfOutput(tf.keras.layers.Layer):
         return hidden_states
 
 
-class TFBertAttention(tf.keras.layers.Layer):
+class TFBertAttention(tf.keras.layers.Layer):  #  TFBertSelfAttention+TFBertSelfOutput
     def __init__(self, config, **kwargs):
         super(TFBertAttention, self).__init__(**kwargs)
         self.self_attention = TFBertSelfAttention(config, name='self')
@@ -283,7 +286,7 @@ class TFBertAttention(tf.keras.layers.Layer):
         return outputs
 
 
-class TFBertIntermediate(tf.keras.layers.Layer):
+class TFBertIntermediate(tf.keras.layers.Layer):  # hidden_states+dense+gelu
     def __init__(self, config, **kwargs):
         super(TFBertIntermediate, self).__init__(**kwargs)
         self.dense = tf.keras.layers.Dense(config.intermediate_size,
@@ -296,11 +299,11 @@ class TFBertIntermediate(tf.keras.layers.Layer):
 
     def call(self, hidden_states):
         hidden_states = self.dense(hidden_states)
-        hidden_states = self.intermediate_act_fn(hidden_states)
+        hidden_states = self.intermediate_act_fn(hidden_states)  # gelu activate
         return hidden_states
 
 
-class TFBertOutput(tf.keras.layers.Layer):
+class TFBertOutput(tf.keras.layers.Layer): # hidden_states+dense+dropout+LayerNorm
     def __init__(self, config, **kwargs):
         super(TFBertOutput, self).__init__(**kwargs)
         self.dense = tf.keras.layers.Dense(config.hidden_size,
@@ -318,7 +321,7 @@ class TFBertOutput(tf.keras.layers.Layer):
         return hidden_states
 
 
-class TFBertLayer(tf.keras.layers.Layer):
+class TFBertLayer(tf.keras.layers.Layer):  # a transformer encoder block
     def __init__(self, config, **kwargs):
         super(TFBertLayer, self).__init__(**kwargs)
         self.attention = TFBertAttention(config, name='attention')
@@ -336,14 +339,14 @@ class TFBertLayer(tf.keras.layers.Layer):
         return outputs
 
 
-class TFBertEncoder(tf.keras.layers.Layer):
+class TFBertEncoder(tf.keras.layers.Layer):  # bert中的整个encoder部分，12层TFBertLayer
     def __init__(self, config, **kwargs):
         super(TFBertEncoder, self).__init__(**kwargs)
-        self.output_attentions = config.output_attentions
-        self.output_hidden_states = config.output_hidden_states
+        self.output_attentions = config.output_attentions  # False
+        self.output_hidden_states = config.output_hidden_states  # False
         self.layer = [TFBertLayer(config, name='layer_._{}'.format(i)) for i in range(config.num_hidden_layers)]
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False):  # 输入标准的3份ids
         hidden_states, attention_mask, head_mask = inputs
 
         all_hidden_states = ()
@@ -352,8 +355,8 @@ class TFBertEncoder(tf.keras.layers.Layer):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            layer_outputs = layer_module([hidden_states, attention_mask, head_mask[i]], training=training)
-            hidden_states = layer_outputs[0]
+            layer_outputs = layer_module([hidden_states, attention_mask, head_mask[i]], training=training)  # 循环12次
+            hidden_states = layer_outputs[0]  # hidden_states
 
             if self.output_attentions:
                 all_attentions = all_attentions + (layer_outputs[1],)
@@ -362,15 +365,15 @@ class TFBertEncoder(tf.keras.layers.Layer):
         if self.output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        outputs = (hidden_states,)
+        outputs = (hidden_states,)  # tuple
         if self.output_hidden_states:
             outputs = outputs + (all_hidden_states,)
         if self.output_attentions:
             outputs = outputs + (all_attentions,)
-        return outputs  # outputs, (hidden states), (attentions)
+        return outputs  # (hidden_states,)   # TODO 4
 
 
-class TFBertPooler(tf.keras.layers.Layer):
+class TFBertPooler(tf.keras.layers.Layer):   # hidden_states[:, 0]+dense
     def __init__(self, config, **kwargs):
         super(TFBertPooler, self).__init__(**kwargs)
         self.dense = tf.keras.layers.Dense(config.hidden_size,
@@ -451,7 +454,7 @@ class TFBertNSPHead(tf.keras.layers.Layer):
         return seq_relationship_score
 
 
-class TFBertMainLayer(tf.keras.layers.Layer):
+class TFBertMainLayer(tf.keras.layers.Layer):   # bert整体，embeddings+encoder+pooler
     def __init__(self, config, **kwargs):
         super(TFBertMainLayer, self).__init__(**kwargs)
         self.num_hidden_layers = config.num_hidden_layers
@@ -471,7 +474,7 @@ class TFBertMainLayer(tf.keras.layers.Layer):
         raise NotImplementedError
 
     def call(self, inputs, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None, training=False):
-        if isinstance(inputs, (tuple, list)):
+        if isinstance(inputs, (tuple, list)):  # inputs最多支持5类ids
             input_ids = inputs[0]
             attention_mask = inputs[1] if len(inputs) > 1 else attention_mask
             token_type_ids = inputs[2] if len(inputs) > 2 else token_type_ids
@@ -523,8 +526,8 @@ class TFBertMainLayer(tf.keras.layers.Layer):
         embedding_output = self.embeddings([input_ids, position_ids, token_type_ids], training=training)
         encoder_outputs = self.encoder([embedding_output, extended_attention_mask, head_mask], training=training)
 
-        sequence_output = encoder_outputs[0]
-        pooled_output = self.pooler(sequence_output)
+        sequence_output = encoder_outputs[0]  # encoder_outputs由几部分构成，第一部分为hidden_states # TODO 3
+        pooled_output = self.pooler(sequence_output)  # just pool by sequence_output[:,0] + Dense
 
         outputs = (sequence_output, pooled_output,) + encoder_outputs[1:]  # add hidden_states and attentions if they are here
         return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)

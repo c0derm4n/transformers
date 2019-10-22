@@ -34,13 +34,14 @@ ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP = {
     'roberta-base': "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-base-pytorch_model.bin",
     'roberta-large': "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-large-pytorch_model.bin",
     'roberta-large-mnli': "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-large-mnli-pytorch_model.bin",
-    'distilroberta-base': "https://s3.amazonaws.com/models.huggingface.co/bert/distilroberta-base-pytorch_model.bin",
 }
+
 
 class RobertaEmbeddings(BertEmbeddings):
     """
     Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
     """
+
     def __init__(self, config):
         super(RobertaEmbeddings, self).__init__(config)
         self.padding_idx = 1
@@ -53,7 +54,8 @@ class RobertaEmbeddings(BertEmbeddings):
         if position_ids is None:
             # Position numbers begin at padding_idx+1. Padding symbols are ignored.
             # cf. fairseq's `utils.make_positions`
-            position_ids = torch.arange(self.padding_idx+1, seq_length+self.padding_idx+1, dtype=torch.long, device=input_ids.device)
+            position_ids = torch.arange(self.padding_idx + 1, seq_length + self.padding_idx + 1, dtype=torch.long,
+                                        device=input_ids.device)
             position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
         return super(RobertaEmbeddings, self).forward(input_ids,
                                                       token_type_ids=token_type_ids,
@@ -64,22 +66,18 @@ ROBERTA_START_DOCSTRING = r"""    The RoBERTa model was proposed in
     `RoBERTa: A Robustly Optimized BERT Pretraining Approach`_
     by Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer,
     Veselin Stoyanov. It is based on Google's BERT model released in 2018.
-    
+
     It builds on BERT and modifies key hyperparameters, removing the next-sentence pretraining
     objective and training with much larger mini-batches and learning rates.
-    
+
     This implementation is the same as BertModel with a tiny embeddings tweak as well as a setup for Roberta pretrained 
     models.
-
     This model is a PyTorch `torch.nn.Module`_ sub-class. Use it as a regular PyTorch Module and
     refer to the PyTorch documentation for all matter related to general usage and behavior.
-
     .. _`RoBERTa: A Robustly Optimized BERT Pretraining Approach`:
         https://arxiv.org/abs/1907.11692
-
     .. _`torch.nn.Module`:
         https://pytorch.org/docs/stable/nn.html#module
-
     Parameters:
         config (:class:`~transformers.RobertaConfig`): Model configuration class with all the parameters of the 
             model. Initializing with a config file does not load the weights associated with the model, only the configuration.
@@ -91,21 +89,14 @@ ROBERTA_INPUTS_DOCSTRING = r"""
         **input_ids**: ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
             Indices of input sequence tokens in the vocabulary.
             To match pre-training, RoBERTa input sequence should be formatted with <s> and </s> tokens as follows:
-
             (a) For sequence pairs:
-
                 ``tokens:         <s> Is this Jacksonville ? </s> </s> No it is not . </s>``
-
             (b) For single sequences:
-
                 ``tokens:         <s> the dog is hairy . </s>``
-
             Fully encoded sequences or sequence pairs can be obtained using the RobertaTokenizer.encode function with 
             the ``add_special_tokens`` parameter set to ``True``.
-
             RoBERTa is a model with absolute position embeddings so it's usually advised to pad the inputs on
             the right rather than the left.
-
             See :func:`transformers.PreTrainedTokenizer.encode` and
             :func:`transformers.PreTrainedTokenizer.convert_tokens_to_ids` for details.
         **attention_mask**: (`optional`) ``torch.FloatTensor`` of shape ``(batch_size, sequence_length)``:
@@ -128,8 +119,10 @@ ROBERTA_INPUTS_DOCSTRING = r"""
             ``1`` indicates the head is **not masked**, ``0`` indicates the head is **masked**.
 """
 
-@add_start_docstrings("The bare RoBERTa Model transformer outputting raw hidden-states without any specific head on top.",
-                      ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
+
+@add_start_docstrings(
+    "The bare RoBERTa Model transformer outputting raw hidden-states without any specific head on top.",
+    ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
 class RobertaModel(BertModel):
     r"""
     Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
@@ -149,15 +142,12 @@ class RobertaModel(BertModel):
         **attentions**: (`optional`, returned when ``config.output_attentions=True``)
             list of ``torch.FloatTensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
     Examples::
-
         tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         model = RobertaModel.from_pretrained('roberta-base')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids)
         last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
-
     """
     config_class = RobertaConfig
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
@@ -183,7 +173,7 @@ class RobertaModel(BertModel):
 
 
 @add_start_docstrings("""RoBERTa Model with a `language modeling` head on top. """,
-    ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
+                      ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
 class RobertaForMaskedLM(BertPreTrainedModel):
     r"""
         **masked_lm_labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
@@ -191,7 +181,6 @@ class RobertaForMaskedLM(BertPreTrainedModel):
             Indices should be in ``[-1, 0, ..., config.vocab_size]`` (see ``input_ids`` docstring)
             Tokens with indices set to ``-1`` are ignored (masked), the loss is only computed for the tokens with labels
             in ``[0, ..., config.vocab_size]``
-
     Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
         **loss**: (`optional`, returned when ``masked_lm_labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
             Masked language modeling loss.
@@ -204,15 +193,12 @@ class RobertaForMaskedLM(BertPreTrainedModel):
         **attentions**: (`optional`, returned when ``config.output_attentions=True``)
             list of ``torch.FloatTensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
     Examples::
-
         tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         model = RobertaForMaskedLM.from_pretrained('roberta-base')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids, masked_lm_labels=input_ids)
         loss, prediction_scores = outputs[:2]
-
     """
     config_class = RobertaConfig
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
@@ -277,7 +263,7 @@ class RobertaLMHead(nn.Module):
 
 @add_start_docstrings("""RoBERTa Model transformer with a sequence classification/regression head on top (a linear layer 
     on top of the pooled output) e.g. for GLUE tasks. """,
-    ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
+                      ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
 class RobertaForSequenceClassification(BertPreTrainedModel):
     r"""
         **labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
@@ -285,7 +271,6 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
             Indices should be in ``[0, ..., config.num_labels]``.
             If ``config.num_labels == 1`` a regression loss is computed (Mean-Square loss),
             If ``config.num_labels > 1`` a classification loss is computed (Cross-Entropy).
-
     Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
         **loss**: (`optional`, returned when ``labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
             Classification (or regression if config.num_labels==1) loss.
@@ -298,16 +283,13 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
         **attentions**: (`optional`, returned when ``config.output_attentions=True``)
             list of ``torch.FloatTensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
     Examples::
-
         tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         model = RobertaForSequenceClassification.from_pretrained('roberta-base')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
         labels = torch.tensor([1]).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids, labels=labels)
         loss, logits = outputs[:2]
-
     """
     config_class = RobertaConfig
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
@@ -319,7 +301,7 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
 
         self.roberta = RobertaModel(config)
         self.classifier = RobertaClassificationHead(config)
-    
+
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
                 labels=None):
         outputs = self.roberta(input_ids,
@@ -343,9 +325,10 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
 
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
+
 @add_start_docstrings("""Roberta Model with a multiple choice classification head on top (a linear layer on top of
     the pooled output and a softmax) e.g. for RocStories/SWAG tasks. """,
-    ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
+                      ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
 class RobertaForMultipleChoice(BertPreTrainedModel):
     r"""
     Inputs:
@@ -353,19 +336,12 @@ class RobertaForMultipleChoice(BertPreTrainedModel):
             Indices of input sequence tokens in the vocabulary.
             The second dimension of the input (`num_choices`) indicates the number of choices to score.
             To match pre-training, RoBerta input sequence should be formatted with [CLS] and [SEP] tokens as follows:
-
             (a) For sequence pairs:
-
                 ``tokens:         [CLS] is this jack ##son ##ville ? [SEP] [SEP] no it is not . [SEP]``
-
                 ``token_type_ids:   0   0  0    0    0     0       0   0   0     1  1  1  1   1   1``
-
             (b) For single sequences:
-
                 ``tokens:         [CLS] the dog is hairy . [SEP]``
-
                 ``token_type_ids:   0   0   0   0  0     0   0``
-
             Indices can be obtained using :class:`transformers.BertTokenizer`.
             See :func:`transformers.PreTrainedTokenizer.encode` and
             :func:`transformers.PreTrainedTokenizer.convert_tokens_to_ids` for details.
@@ -386,7 +362,6 @@ class RobertaForMultipleChoice(BertPreTrainedModel):
             Labels for computing the multiple choice classification loss.
             Indices should be in ``[0, ..., num_choices]`` where `num_choices` is the size of the second dimension
             of the input tensors. (see `input_ids` above)
-
     Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
         **loss**: (`optional`, returned when ``labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
             Classification loss.
@@ -400,9 +375,7 @@ class RobertaForMultipleChoice(BertPreTrainedModel):
         **attentions**: (`optional`, returned when ``config.output_attentions=True``)
             list of ``torch.FloatTensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
     Examples::
-
         tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         model = RobertaForMultipleChoice.from_pretrained('roberta-base')
         choices = ["Hello, my dog is cute", "Hello, my cat is amazing"]
@@ -410,7 +383,6 @@ class RobertaForMultipleChoice(BertPreTrainedModel):
         labels = torch.tensor(1).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids, labels=labels)
         loss, classification_scores = outputs[:2]
-
     """
     config_class = RobertaConfig
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
@@ -434,7 +406,7 @@ class RobertaForMultipleChoice(BertPreTrainedModel):
         flat_token_type_ids = token_type_ids.view(-1, token_type_ids.size(-1)) if token_type_ids is not None else None
         flat_attention_mask = attention_mask.view(-1, attention_mask.size(-1)) if attention_mask is not None else None
         outputs = self.roberta(flat_input_ids, position_ids=flat_position_ids, token_type_ids=flat_token_type_ids,
-                            attention_mask=flat_attention_mask, head_mask=head_mask)
+                               attention_mask=flat_attention_mask, head_mask=head_mask)
         pooled_output = outputs[1]
 
         pooled_output = self.dropout(pooled_output)
@@ -449,7 +421,6 @@ class RobertaForMultipleChoice(BertPreTrainedModel):
             outputs = (loss,) + outputs
 
         return outputs  # (loss), reshaped_logits, (hidden_states), (attentions)
-
 
 
 class RobertaClassificationHead(nn.Module):
@@ -469,3 +440,89 @@ class RobertaClassificationHead(nn.Module):
         x = self.dropout(x)
         x = self.out_proj(x)
         return x
+
+
+@add_start_docstrings("""Roberta Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear layers on top of
+    the hidden-states output to compute `span start logits` and `span end logits`). """,
+                      ROBERTA_START_DOCSTRING, ROBERTA_INPUTS_DOCSTRING)
+class RobertaForQuestionAnswering(BertPreTrainedModel):
+    r"""
+        **start_positions**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
+            Labels for position (index) of the start of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`).
+            Position outside of the sequence are not taken into account for computing the loss.
+        **end_positions**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
+            Labels for position (index) of the end of the labelled span for computing the token classification loss.
+            Positions are clamped to the length of the sequence (`sequence_length`).
+            Position outside of the sequence are not taken into account for computing the loss.
+    Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
+        **loss**: (`optional`, returned when ``labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
+            Total span extraction loss is the sum of a Cross-Entropy for the start and end positions.
+        **start_scores**: ``torch.FloatTensor`` of shape ``(batch_size, sequence_length,)``
+            Span-start scores (before SoftMax).
+        **end_scores**: ``torch.FloatTensor`` of shape ``(batch_size, sequence_length,)``
+            Span-end scores (before SoftMax).
+        **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
+            list of ``torch.FloatTensor`` (one for the output of each layer + the output of the embeddings)
+            of shape ``(batch_size, sequence_length, hidden_size)``:
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        **attentions**: (`optional`, returned when ``config.output_attentions=True``)
+            list of ``torch.FloatTensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
+    Examples::
+        tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+        model = RobertaForMultipleChoice.from_pretrained('roberta-base')
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
+        start_positions = torch.tensor([1])
+        end_positions = torch.tensor([3])
+        outputs = model(input_ids, start_positions=start_positions, end_positions=end_positions)
+        loss, start_scores, end_scores = outputs[:2]
+    """
+    config_class = RobertaConfig
+    pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
+    base_model_prefix = "roberta"
+
+    def __init__(self, config):
+        super(RobertaForQuestionAnswering, self).__init__(config)
+        self.num_labels = config.num_labels
+
+        self.roberta = RobertaModel(config)
+        self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
+
+        self.init_weights()
+
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
+                start_positions=None, end_positions=None):
+
+        outputs = self.roberta(input_ids,
+                               attention_mask=attention_mask,
+                               token_type_ids=token_type_ids,
+                               position_ids=position_ids,
+                               head_mask=head_mask)
+
+        sequence_output = outputs[0]
+
+        logits = self.qa_outputs(sequence_output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        outputs = (start_logits, end_logits,) + outputs[2:]
+        if start_positions is not None and end_positions is not None:
+            # If we are on multi-GPU, split add a dimension
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions.clamp_(0, ignored_index)
+            end_positions.clamp_(0, ignored_index)
+
+            loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            total_loss = (start_loss + end_loss) / 2
+            outputs = (total_loss,) + outputs
+
+        return outputs  # (loss), start_logits, end_logits, (hidden_states), (attentions)

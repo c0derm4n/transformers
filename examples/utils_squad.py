@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
@@ -192,8 +191,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                                  cls_token='[CLS]', sep_token='[SEP]', pad_token=0,
                                  sequence_a_segment_id=0, sequence_b_segment_id=1,
                                  cls_token_segment_id=0, pad_token_segment_id=0,
-                                 mask_padding_with_zero=True):
-    """Loads a data file into a list of `InputBatch`s."""
+                                 mask_padding_with_zero=True, sep_token_extra=False):
+    """Loads a data file into a list of `InputFeatures`."""
 
     unique_id = 1000000000
     # cnt_pos, cnt_neg = 0, 0
@@ -216,7 +215,9 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         all_doc_tokens = []
         for (i, token) in enumerate(example.doc_tokens):
             orig_to_tok_index.append(len(all_doc_tokens))
+
             sub_tokens = tokenizer.tokenize(token)
+
             for sub_token in sub_tokens:
                 tok_to_orig_index.append(i)
                 all_doc_tokens.append(sub_token)
@@ -237,7 +238,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 example.orig_answer_text)
 
         # The -3 accounts for [CLS], [SEP] and [SEP]
-        max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
+        special_tokens_count = 4 if sep_token_extra else 3
+        max_tokens_for_doc = max_seq_length - len(query_tokens) - special_tokens_count
 
         # We can have documents that are longer than the maximum sequence length.
         # To deal with this we do a sliding window approach, where we take chunks
@@ -282,6 +284,11 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
             tokens.append(sep_token)
             segment_ids.append(sequence_a_segment_id)
             p_mask.append(1)
+
+            if sep_token_extra:
+                tokens.append(sep_token)
+                segment_ids.append(sequence_a_segment_id)
+                p_mask.append(1)
 
             # Paragraph
             for i in range(doc_span.length):
@@ -342,7 +349,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     end_position = 0
                     span_is_impossible = True
                 else:
-                    doc_offset = len(query_tokens) + 2
+                    special_tokens_offset = special_tokens_count - 2 if cls_token_at_end else special_tokens_count - 1
+                    doc_offset = len(query_tokens) + special_tokens_offset
                     start_position = tok_start_position - doc_start + doc_offset
                     end_position = tok_end_position - doc_start + doc_offset
 
@@ -474,10 +482,11 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
 RawResult = collections.namedtuple("RawResult",
                                    ["unique_id", "start_logits", "end_logits"])
 
+
 def write_predictions(all_examples, all_features, all_results, n_best_size,
                       max_answer_length, do_lower_case, output_prediction_file,
                       output_nbest_file, output_null_log_odds_file, verbose_logging,
-                      version_2_with_negative, null_score_diff_threshold):
+                      version_2_with_negative, null_score_diff_threshold, tokenizer):
     """Write final predictions to the json file and log-odds of null if needed."""
     logger.info("Writing predictions to: %s" % (output_prediction_file))
     logger.info("Writing nbest to: %s" % (output_nbest_file))
@@ -573,11 +582,8 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 orig_doc_start = feature.token_to_orig_map[pred.start_index]
                 orig_doc_end = feature.token_to_orig_map[pred.end_index]
                 orig_tokens = example.doc_tokens[orig_doc_start:(orig_doc_end + 1)]
-                tok_text = " ".join(tok_tokens)
 
-                # De-tokenize WordPieces that have been split off.
-                tok_text = tok_text.replace(" ##", "")
-                tok_text = tok_text.replace("##", "")
+                tok_text = tokenizer.convert_tokens_to_string(tok_tokens)
 
                 # Clean whitespace
                 tok_text = tok_text.strip()
@@ -606,12 +612,12 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                         text="",
                         start_logit=null_start_logit,
                         end_logit=null_end_logit))
-                
+
             # In very rare edge cases we could only have single null prediction.
             # So we just create a nonce prediction in this case to avoid failure.
-            if len(nbest)==1:
+            if len(nbest) == 1:
                 nbest.insert(0,
-                    _NbestPrediction(text="empty", start_logit=0.0, end_logit=0.0))
+                             _NbestPrediction(text="empty", start_logit=0.0, end_logit=0.0))
 
         # In very rare edge cases we could have no valid predictions. So we
         # just create a nonce prediction in this case to avoid failure.
@@ -670,25 +676,24 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
 
 # For XLNet (and XLM which uses the same head)
 RawResultExtended = collections.namedtuple("RawResultExtended",
-    ["unique_id", "start_top_log_probs", "start_top_index",
-     "end_top_log_probs", "end_top_index", "cls_logits"])
+                                           ["unique_id", "start_top_log_probs", "start_top_index",
+                                            "end_top_log_probs", "end_top_index", "cls_logits"])
 
 
 def write_predictions_extended(all_examples, all_features, all_results, n_best_size,
-                                max_answer_length, output_prediction_file,
-                                output_nbest_file,
-                                output_null_log_odds_file, orig_data_file,
-                                start_n_top, end_n_top, version_2_with_negative,
-                                tokenizer, verbose_logging):
+                               max_answer_length, output_prediction_file,
+                               output_nbest_file,
+                               output_null_log_odds_file, orig_data_file,
+                               start_n_top, end_n_top, version_2_with_negative,
+                               tokenizer, verbose_logging):
     """ XLNet write prediction logic (more complex than Bert's).
         Write final predictions to the json file and log-odds of null if needed.
-
         Requires utils_squad_evaluate.py
     """
     _PrelimPrediction = collections.namedtuple(  # pylint: disable=invalid-name
         "PrelimPrediction",
         ["feature_index", "start_index", "end_index",
-        "start_log_prob", "end_log_prob"])
+         "start_log_prob", "end_log_prob"])
 
     _NbestPrediction = collections.namedtuple(  # pylint: disable=invalid-name
         "NbestPrediction", ["text", "start_log_prob", "end_log_prob"])
@@ -810,7 +815,7 @@ def write_predictions_extended(all_examples, all_features, all_results, n_best_s
         if not nbest:
             nbest.append(
                 _NbestPrediction(text="", start_log_prob=-1e6,
-                end_log_prob=-1e6))
+                                 end_log_prob=-1e6))
 
         total_scores = []
         best_non_null_entry = None
