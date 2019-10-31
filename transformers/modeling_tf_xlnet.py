@@ -852,8 +852,8 @@ class TFXLNetLMHeadModel(TFXLNetPreTrainedModel):
 
     def call(self, inputs, **kwargs):
         transformer_outputs = self.transformer(inputs, **kwargs)
-        hidden_state = transformer_outputs[0]
-        logits = self.lm_loss(hidden_state)
+        hidden_state = transformer_outputs[0]  # sequence
+        logits = self.lm_loss(hidden_state)  # input_embeddings+
 
         outputs = (logits,) + transformer_outputs[1:]  # Keep mems, hidden states, attentions if there are in it
 
@@ -905,9 +905,9 @@ class TFXLNetForSequenceClassification(TFXLNetPreTrainedModel):
 
     def call(self, inputs, **kwargs):
         transformer_outputs = self.transformer(inputs, **kwargs)
-        output = transformer_outputs[0]
+        output = transformer_outputs[0]  # sequence
 
-        output = self.sequence_summary(output)
+        output = self.sequence_summary(output)  # get last
         logits = self.logits_proj(output)
 
         outputs = (logits,) + transformer_outputs[1:]  # Keep mems, hidden states, attentions if there are in it

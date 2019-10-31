@@ -145,7 +145,7 @@ class TFBertEmbeddings(tf.keras.layers.Layer):
         """Applies embedding based on inputs tensor."""
         input_ids, position_ids, token_type_ids = inputs
 
-        seq_length = tf.shape(input_ids)[1]
+        seq_length = tf.shape(input_ids)[1]   # seq_length <--- input_ids  <---max_seq_length in config.py
         if position_ids is None:
             position_ids = tf.range(seq_length, dtype=tf.int32)[tf.newaxis, :]
         if token_type_ids is None:
