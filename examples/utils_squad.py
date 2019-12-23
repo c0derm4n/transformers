@@ -191,8 +191,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                                  cls_token='[CLS]', sep_token='[SEP]', pad_token=0,
                                  sequence_a_segment_id=0, sequence_b_segment_id=1,
                                  cls_token_segment_id=0, pad_token_segment_id=0,
-                                 mask_padding_with_zero=True, sep_token_extra=False):
-    """Loads a data file into a list of `InputFeatures`."""
+                                 mask_padding_with_zero=True, sep_token_extra=False, add_prefix_space=False):
+    """Loads a data file into a list of `InputBatch`s."""
 
     unique_id = 1000000000
     # cnt_pos, cnt_neg = 0, 0
@@ -205,7 +205,10 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         # if example_index % 100 == 0:
         #     logger.info('Converting %s/%s pos %s neg %s', example_index, len(examples), cnt_pos, cnt_neg)
 
-        query_tokens = tokenizer.tokenize(example.question_text)
+        if add_prefix_space:
+            query_tokens = tokenizer.tokenize(example.question_text, add_prefix_space=True)
+        else:
+            query_tokens = tokenizer.tokenize(example.question_text)
 
         if len(query_tokens) > max_query_length:
             query_tokens = query_tokens[0:max_query_length]
@@ -216,7 +219,10 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         for (i, token) in enumerate(example.doc_tokens):
             orig_to_tok_index.append(len(all_doc_tokens))
 
-            sub_tokens = tokenizer.tokenize(token)
+            if add_prefix_space:
+                sub_tokens = tokenizer.tokenize(token, add_prefix_space=True)
+            else:
+                sub_tokens = tokenizer.tokenize(token)
 
             for sub_token in sub_tokens:
                 tok_to_orig_index.append(i)
@@ -235,7 +241,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 tok_end_position = len(all_doc_tokens) - 1
             (tok_start_position, tok_end_position) = _improve_answer_span(
                 all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
-                example.orig_answer_text)
+                example.orig_answer_text, add_prefix_space)
 
         # The -3 accounts for [CLS], [SEP] and [SEP]
         special_tokens_count = 4 if sep_token_extra else 3
@@ -244,8 +250,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         # We can have documents that are longer than the maximum sequence length.
         # To deal with this we do a sliding window approach, where we take chunks
         # of the up to our max length with a stride of `doc_stride`.
-        _DocSpan = collections.namedtuple(  # pylint: disable=invalid-name
-            "DocSpan", ["start", "length"])
+        _DocSpan = collections.namedtuple("DocSpan", ["start", "length"])# pylint: disable=invalid-name
         doc_spans = []
         start_offset = 0
         while start_offset < len(all_doc_tokens):
@@ -267,53 +272,82 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
             # Original TF implem also keep the classification token (set to 0) (not sure why...)
             p_mask = []
 
-            # CLS token at the beginning
-            if not cls_token_at_end:
+            if cls_token_at_end:
+                # Paragraph
+                for i in range(doc_span.length):
+                    split_token_index = doc_span.start + i
+                    token_to_orig_map[len(tokens)] = tok_to_orig_index[split_token_index]
+                    is_max_context = _check_is_max_context(doc_spans, doc_span_index, split_token_index)
+                    token_is_max_context[len(tokens)] = is_max_context
+                    tokens.append(all_doc_tokens[split_token_index])
+                    segment_ids.append(sequence_a_segment_id)
+                    p_mask.append(0)
+                paragraph_len = doc_span.length
+
+                # SEP token
+                tokens.append(sep_token)
+                segment_ids.append(sequence_a_segment_id)
+                p_mask.append(1)
+
+                if sep_token_extra:
+                    tokens.append(sep_token)
+                    segment_ids.append(sequence_a_segment_id)
+                    p_mask.append(1)
+
+                # Query
+                for token in query_tokens:
+                    tokens.append(token)
+                    segment_ids.append(sequence_b_segment_id)
+                    p_mask.append(1)
+
+                # SEP token
+                tokens.append(sep_token)
+                segment_ids.append(sequence_b_segment_id)
+                p_mask.append(1)
+
+                # CLS token at the end
+                tokens.append(cls_token)
+                segment_ids.append(cls_token_segment_id)
+                p_mask.append(0)
+                cls_index = len(tokens) - 1  # Index of classification token
+            else:
+                # CLS token at the beginning
                 tokens.append(cls_token)
                 segment_ids.append(cls_token_segment_id)
                 p_mask.append(0)
                 cls_index = 0
 
-            # Query
-            for token in query_tokens:
-                tokens.append(token)
-                segment_ids.append(sequence_a_segment_id)
-                p_mask.append(1)
+                # Query
+                for token in query_tokens:
+                    tokens.append(token)
+                    segment_ids.append(sequence_a_segment_id)
+                    p_mask.append(1)
 
-            # SEP token
-            tokens.append(sep_token)
-            segment_ids.append(sequence_a_segment_id)
-            p_mask.append(1)
-
-            if sep_token_extra:
+                # SEP token
                 tokens.append(sep_token)
                 segment_ids.append(sequence_a_segment_id)
                 p_mask.append(1)
 
-            # Paragraph
-            for i in range(doc_span.length):
-                split_token_index = doc_span.start + i
-                token_to_orig_map[len(tokens)] = tok_to_orig_index[split_token_index]
+                if sep_token_extra:
+                    tokens.append(sep_token)
+                    segment_ids.append(sequence_a_segment_id)
+                    p_mask.append(1)
 
-                is_max_context = _check_is_max_context(doc_spans, doc_span_index,
-                                                       split_token_index)
-                token_is_max_context[len(tokens)] = is_max_context
-                tokens.append(all_doc_tokens[split_token_index])
+                # Paragraph
+                for i in range(doc_span.length):
+                    split_token_index = doc_span.start + i
+                    token_to_orig_map[len(tokens)] = tok_to_orig_index[split_token_index]
+                    is_max_context = _check_is_max_context(doc_spans, doc_span_index, split_token_index)
+                    token_is_max_context[len(tokens)] = is_max_context
+                    tokens.append(all_doc_tokens[split_token_index])
+                    segment_ids.append(sequence_b_segment_id)
+                    p_mask.append(0)
+                paragraph_len = doc_span.length
+
+                # SEP token
+                tokens.append(sep_token)
                 segment_ids.append(sequence_b_segment_id)
-                p_mask.append(0)
-            paragraph_len = doc_span.length
-
-            # SEP token
-            tokens.append(sep_token)
-            segment_ids.append(sequence_b_segment_id)
-            p_mask.append(1)
-
-            # CLS token at the end
-            if cls_token_at_end:
-                tokens.append(cls_token)
-                segment_ids.append(cls_token_segment_id)
-                p_mask.append(0)
-                cls_index = len(tokens) - 1  # Index of classification token
+                p_mask.append(1)
 
             input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -349,8 +383,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     end_position = 0
                     span_is_impossible = True
                 else:
-                    special_tokens_offset = special_tokens_count - 2 if cls_token_at_end else special_tokens_count - 1
-                    doc_offset = len(query_tokens) + special_tokens_offset
+                    doc_offset = 0 if cls_token_at_end else len(query_tokens) + special_tokens_count - 1
                     start_position = tok_start_position - doc_start + doc_offset
                     end_position = tok_end_position - doc_start + doc_offset
 
@@ -406,7 +439,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
 
 
 def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
-                         orig_answer_text):
+                         orig_answer_text, add_prefix_space=False):
     """Returns tokenized answer spans that better match the annotated answer."""
 
     # The SQuAD annotations are character based. We first project them to
@@ -431,7 +464,10 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
     # the word "Japanese". Since our WordPiece tokenizer does not split
     # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
     # in SQuAD, but does happen.
-    tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
+    if add_prefix_space:
+        tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text, add_prefix_space=True))
+    else:
+        tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
 
     for new_start in range(input_start, input_end + 1):
         for new_end in range(input_end, new_start - 1, -1):
@@ -486,7 +522,7 @@ RawResult = collections.namedtuple("RawResult",
 def write_predictions(all_examples, all_features, all_results, n_best_size,
                       max_answer_length, do_lower_case, output_prediction_file,
                       output_nbest_file, output_null_log_odds_file, verbose_logging,
-                      version_2_with_negative, null_score_diff_threshold, tokenizer):
+                      version_2_with_negative, null_score_diff_threshold, tokenizer=None):
     """Write final predictions to the json file and log-odds of null if needed."""
     logger.info("Writing predictions to: %s" % (output_prediction_file))
     logger.info("Writing nbest to: %s" % (output_nbest_file))
@@ -583,7 +619,14 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 orig_doc_end = feature.token_to_orig_map[pred.end_index]
                 orig_tokens = example.doc_tokens[orig_doc_start:(orig_doc_end + 1)]
 
-                tok_text = tokenizer.convert_tokens_to_string(tok_tokens)
+                if tokenizer is not None:
+                    tok_text = tokenizer.convert_tokens_to_string(tok_tokens)
+                else:
+                    tok_text = " ".join(tok_tokens)
+
+                    # De-tokenize WordPieces that have been split off.
+                    tok_text = tok_text.replace(" ##", "")
+                    tok_text = tok_text.replace("##", "")
 
                 # Clean whitespace
                 tok_text = tok_text.strip()
@@ -685,7 +728,7 @@ def write_predictions_extended(all_examples, all_features, all_results, n_best_s
                                output_nbest_file,
                                output_null_log_odds_file, orig_data_file,
                                start_n_top, end_n_top, version_2_with_negative,
-                               tokenizer, verbose_logging):
+                               tokenizer, do_lower_case, verbose_logging):
     """ XLNet write prediction logic (more complex than Bert's).
         Write final predictions to the json file and log-odds of null if needed.
         Requires utils_squad_evaluate.py
@@ -776,7 +819,7 @@ def write_predictions_extended(all_examples, all_features, all_results, n_best_s
 
             # XLNet un-tokenizer
             # Let's keep it simple for now and see if we need all this later.
-            # 
+            #
             # tok_start_to_orig_index = feature.tok_start_to_orig_index
             # tok_end_to_orig_index = feature.tok_end_to_orig_index
             # start_orig_pos = tok_start_to_orig_index[pred.start_index]
@@ -796,8 +839,7 @@ def write_predictions_extended(all_examples, all_features, all_results, n_best_s
             tok_text = " ".join(tok_text.split())
             orig_text = " ".join(orig_tokens)
 
-            final_text = get_final_text(tok_text, orig_text, tokenizer.do_lower_case,
-                                        verbose_logging)
+            final_text = get_final_text(tok_text, orig_text, do_lower_case, verbose_logging)
 
             if final_text in seen_predictions:
                 continue

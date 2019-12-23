@@ -425,8 +425,8 @@ def main():
     # Load pretrained model and tokenizer. The decoder's weights are randomly initialized.
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     config = BertConfig.from_pretrained(args.model_name_or_path)
-    decoder_model = BertForMaskedLM(config)
-    model = Model2Model.from_pretrained(
+    decoder_model = BertForMaskedLM(config)       # decoder BertForMaskedLM, weights are randomly initialized
+    model = Model2Model.from_pretrained(          # model_name_or_path   default="bert-base-cased"
         args.model_name_or_path, decoder_model=decoder_model
     )
 
@@ -450,7 +450,7 @@ def main():
     # Train the model
     model.to(args.device)
     if args.do_train:
-        global_step, tr_loss = train(args, model, tokenizer)
+        global_step, tr_loss = train(args, model, tokenizer)    # training !!!
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
         if not os.path.exists(args.output_dir):

@@ -492,7 +492,7 @@ class PoolerEndLogits(nn.Module):
         """
         assert start_states is not None or start_positions is not None, "One of start_states, start_positions should be not None"
         if start_positions is not None:
-            slen, hsz = hidden_states.shape[-2:]
+            slen, hsz = hidden_states.shape[-2:]   # sequence_length, hidden_size
             start_positions = start_positions[:, None, None].expand(-1, -1, hsz) # shape (bsz, 1, hsz)
             start_states = hidden_states.gather(-2, start_positions) # shape (bsz, 1, hsz)
             start_states = start_states.expand(-1, slen, -1) # shape (bsz, slen, hsz)
